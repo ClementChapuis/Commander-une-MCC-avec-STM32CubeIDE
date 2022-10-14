@@ -42,7 +42,7 @@
 // DEL = delete
 #define ASCII_DEL 0x7F
 #define ARR_VAL 1024
-#define ALPHA 800
+#define ALPHA 600
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -82,7 +82,6 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /**
@@ -196,6 +195,8 @@ int main(void)
   	  	      }
   	  		  else if(strcmp(argv[0],"start")==0)
   	  		  {
+  	  			  HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, SET);
+  	  			  HAL_Delay(5);
   	  			  HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOn), HAL_MAX_DELAY);
   	  			  HAL_TIM_Base_Start(&htim1);
   	  			  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
@@ -213,6 +214,8 @@ int main(void)
   	  		  	  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
   	  		  	  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
   	  		  	  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
+  	  		  	  HAL_Delay(5);
+  	  		  	  HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
   	  		  }
   	  		  else{
   	  			  HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
