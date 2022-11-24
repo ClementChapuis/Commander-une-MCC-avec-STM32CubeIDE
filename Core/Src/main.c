@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -69,6 +71,14 @@ uint8_t uartRxBuffer[UART_RX_BUFFER_SIZE];
 uint8_t uartTxBuffer[UART_TX_BUFFER_SIZE];
 uint8_t powerOn[]="Allumage du moteur\r\n";
 uint8_t powerOff[]="Extinction du moteur\r\n";
+
+//SHELL_____________________________________________________________________
+	char	 	cmdBuffer[CMD_BUFFER_SIZE];
+	int 		idx_cmd;
+	char* 		argv[MAX_ARGS];
+	int		 	argc = 0;
+	char*		token;
+	int 		newCmdReady = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,6 +92,97 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// Nouvelle ligne, instruction à traiter
+void newcom(void)
+{
+	HAL_UART_Transmit(&huart2, newline, sizeof(newline), HAL_MAX_DELAY);
+	//select();
+	cmdBuffer[idx_cmd] = '\0';
+	argc = 0;
+	token = strtok(cmdBuffer, " ");
+	while(token!=NULL){
+		argv[argc++] = token;
+	  	token = strtok(NULL, " ");
+	}
+
+	idx_cmd = 0;
+	newCmdReady = 1;
+}
+
+// Suppression du dernier caractère
+void delete(void)
+{
+	cmdBuffer[idx_cmd--] = '\0';
+	HAL_UART_Transmit(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE, HAL_MAX_DELAY);
+}
+
+// Nouveau caractère
+
+void new_carac(void)
+{
+	cmdBuffer[idx_cmd++] = uartRxBuffer[0];
+	HAL_UART_Transmit(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE, HAL_MAX_DELAY);//Echo
+}
+
+void get(void)
+{
+	HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
+}
+
+void set(void)
+{
+	if(strcmp(argv[1],"PA5")==0)
+	{
+		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, atoi(argv[2]));
+		sprintf(uartTxBuffer,"Switch on/off led : %d\r\n",atoi(argv[2]));
+		HAL_UART_Transmit(&huart2, uartTxBuffer, 32, HAL_MAX_DELAY);
+	}
+	else{
+	  	HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
+	}
+}
+
+void help(void)
+{
+	sprintf(uartTxBuffer, "HELP : Fonctions available :\r\n");
+	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
+	sprintf(uartTxBuffer, "- pinout : affiche toutes les broches connectées\r\n");
+	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
+	sprintf(uartTxBuffer, "- start : allume l'étage de puissance du moteur\r\n");
+	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
+	sprintf(uartTxBuffer, "- stop : éteind l'étage de puissance du moteur\r\n");
+	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
+}
+
+void start(void)
+{
+	//séquence d'initialisation
+	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, SET);
+	HAL_Delay(5);
+
+	HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOn), HAL_MAX_DELAY);
+	HAL_TIM_Base_Start(&htim1);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
+	TIM1->CCR1=ARR_VAL-ALPHA;
+	TIM1->CCR2=ALPHA;
+}
+
+void stop(void)
+{
+	HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOff), HAL_MAX_DELAY);
+	HAL_TIM_Base_Stop(&htim1);
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
+	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_Delay(5);
+	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -91,13 +192,7 @@ static void MX_USART2_UART_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	//SHELL_____________________________________________________________________
-	char	 	cmdBuffer[CMD_BUFFER_SIZE];
-	int 		idx_cmd;
-	char* 		argv[MAX_ARGS];
-	int		 	argc = 0;
-	char*		token;
-	int 		newCmdReady = 0;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -141,81 +236,38 @@ int main(void)
   	  		  switch(uartRxBuffer[0]){
   	  		  // Nouvelle ligne, instruction à traiter
   	  		  case ASCII_CR:
-  	  			  HAL_UART_Transmit(&huart2, newline, sizeof(newline), HAL_MAX_DELAY);
-  	  			  //select();
-  	  			  cmdBuffer[idx_cmd] = '\0';
-  	  			  argc = 0;
-  	  			  token = strtok(cmdBuffer, " ");
-  	  			  while(token!=NULL){
-  	  				  argv[argc++] = token;
-  	  				  token = strtok(NULL, " ");
-  	  			  }
-
-  	  			  idx_cmd = 0;
-  	  			  newCmdReady = 1;
+  	  			  newcom();
   	  			  break;
   	  		  // Suppression du dernier caractère
   	  		  case ASCII_DEL:
-  	  			  cmdBuffer[idx_cmd--] = '\0';
-  	  			  HAL_UART_Transmit(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE, HAL_MAX_DELAY);
+  	  			  delete();
   	  			  break;
   	  	      // Nouveau caractère
   	  		  default:
-  	  			  cmdBuffer[idx_cmd++] = uartRxBuffer[0];
-  	  			  HAL_UART_Transmit(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE, HAL_MAX_DELAY);//Echo
+  	  			  new_carac();
   	  		  }
   	  		  uartRxReceived = 0;
   	  	  }
 
   	  	  if(newCmdReady){
   	  		  if(strcmp(argv[0],"set")==0){
-  	  			  if(strcmp(argv[1],"PA5")==0){
-  	  				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, atoi(argv[2]));
-  	  				  sprintf(uartTxBuffer,"Switch on/off led : %d\r\n",atoi(argv[2]));
-  	  				  HAL_UART_Transmit(&huart2, uartTxBuffer, 32, HAL_MAX_DELAY);
-  	  			  }
-  	  			  else{
-  	  				  HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
-  	  			  }
+  	  			  set();
   	  		  }
   	  		  else if(strcmp(argv[0],"get")==0)
   	  		  {
-  	  			  HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
+  	  			  get();
   	  		  }
   	  		  else if(strcmp(argv[0],"help")==0)
   	  		  {
-  	  			sprintf(uartTxBuffer, "HELP : Fonctions available :\r\n");
-  	  			HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-  	  			sprintf(uartTxBuffer, "- pinout : affiche toutes les broches connectées\r\n");
-  	  			HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-  	  			sprintf(uartTxBuffer, "- start : allume l'étage de puissance du moteur\r\n");
-  	  			HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-  	  			sprintf(uartTxBuffer, "- stop : éteind l'étage de puissance du moteur\r\n");
-  	  			HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
+  	  			  help();
   	  	      }
   	  		  else if(strcmp(argv[0],"start")==0)
   	  		  {
-  	  			  HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, SET);
-  	  			  HAL_Delay(5);
-  	  			  HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOn), HAL_MAX_DELAY);
-  	  			  HAL_TIM_Base_Start(&htim1);
-  	  			  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  	  			  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  	  			  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-  	  			  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-  	  			  TIM1->CCR1=ARR_VAL-ALPHA;
-  	  			  TIM1->CCR2=ALPHA;
+  	  			  start();
   	  		  }
   	  		  else if(strcmp(argv[0],"stop")==0)
   	  		  {
-  	  		  	  HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOff), HAL_MAX_DELAY);
-  	  		  	  HAL_TIM_Base_Stop(&htim1);
-  	  		  	  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-  	  		  	  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-  	  		  	  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
-  	  		  	  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
-  	  		  	  HAL_Delay(5);
-  	  		  	  HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
+  	  		  	  stop();
   	  		  }
   	  		  else{
   	  			  HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
