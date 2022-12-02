@@ -4,7 +4,7 @@
   * @file           : main.c
   * @brief          : Main program body
   * @author			: Clément Chapuis & Aurélien Sutra
-  * @date			: Date du dernier commit&push : 24/11/2022
+  * @date			: Date du dernier commit&push : 02/12/2022
   ******************************************************************************
   * @attention
   *
@@ -339,7 +339,7 @@ int main(void)
 
   	  	  if(adcDMAFlag)
   	  	  {
-  	  		sprintf(uartTxBuffer, "{ADC Value : %1.2f}\r\n", ((float)adcBuffer[0])*3.3/4096);
+  	  		sprintf(uartTxBuffer, "{ADC Value : %1.2f}\r\n", ((float)adcBuffer[0])*3.3/4096); //ici des volt -> voir page 18 sur la doc de l'alim
   	  		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
   	  		adcDMAFlag = 0;
   	  	  }
