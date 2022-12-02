@@ -3,6 +3,8 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
+  * @author			: Clément Chapuis & Aurélien Sutra
+  * @date			: Date du dernier commit&push : 24/11/2022
   ******************************************************************************
   * @attention
   *
@@ -79,6 +81,7 @@ uint8_t powerOff[]="Extinction du moteur\r\n";
 	int		 	argc = 0;
 	char*		token;
 	int 		newCmdReady = 0;
+	int 		abs_speed = 50;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -147,9 +150,11 @@ void help(void)
 {
 	sprintf(uartTxBuffer, "HELP : Fonctions available :\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- pinout : affiche toutes les broches connectées\r\n");
+	sprintf(uartTxBuffer, "- pinout : affiche toutes les broches connectées (à faire)\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 	sprintf(uartTxBuffer, "- start : allume l'étage de puissance du moteur\r\n");
+	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
+	sprintf(uartTxBuffer, "- speed : règle la vitesse du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 	sprintf(uartTxBuffer, "- stop : éteind l'étage de puissance du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
@@ -159,29 +164,63 @@ void start(void)
 {
 	//séquence d'initialisation
 	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, SET);
-	HAL_Delay(5);
+	HAL_Delay(1);
+	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
 
+	//set_speed(50);
 	HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOn), HAL_MAX_DELAY);
 	HAL_TIM_Base_Start(&htim1);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-	TIM1->CCR1=ARR_VAL-ALPHA;
-	TIM1->CCR2=ALPHA;
 }
 
 void stop(void)
 {
-	HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOff), HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2, powerOff, sizeof(powerOff), HAL_MAX_DELAY);
 	HAL_TIM_Base_Stop(&htim1);
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
 	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
 	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
-	HAL_Delay(5);
-	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
 }
+
+void set_speed(char* vit)
+{
+	int speed = (ARR_VAL*atoi(vit))/100;
+	TIM1->CCR1=ARR_VAL-speed;
+	TIM1->CCR2=speed;
+}
+/*
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+   Prevent unused argument(s) compilation warning
+  UNUSED(GPIO_Pin);
+  int compt = 1;
+  char speed[100];
+  if (compt)
+  {
+	  set_speed(itoa(abs_speed,speed,10));
+	  abs_speed++;
+	  if (abs_speed == 100)
+	  {
+		  compt = 0;
+	  }
+  }
+  else {
+	  abs_speed--;
+	  if(abs_speed == 0)
+	  {
+		  compt = 1;
+	  }
+  }
+
+   NOTE: This function should not be modified, when the callback is needed,
+           the HAL_GPIO_EXTI_Callback could be implemented in the user file
+
+}*/
+
 
 /* USER CODE END 0 */
 
@@ -264,6 +303,10 @@ int main(void)
   	  		  else if(strcmp(argv[0],"start")==0)
   	  		  {
   	  			  start();
+  	  		  }
+  	  		  else if(strcmp(argv[0],"speed")==0)
+  	  		  {
+  	  			  set_speed(argv[1]);
   	  		  }
   	  		  else if(strcmp(argv[0],"stop")==0)
   	  		  {
@@ -387,7 +430,6 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.Pulse = 256;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -477,6 +519,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, GPIO_PIN_RESET);
@@ -504,7 +547,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : blue_button_Pin */
+  GPIO_InitStruct.Pin = blue_button_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(blue_button_GPIO_Port, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
