@@ -42,9 +42,13 @@ Au cours de la séance, la consigne a été précisée, et seule la valeur mesur
 
 ## Asservissement du moteur
 Nous devons réaliser deux asservissements : un en courant et un en vitesse.
-Malheureusement, nous ne sommes pas parvenus à réaliser le second asservissement. Nous nous contenterons donc de vous présenter notre travail pour l'asservissement en courant
+Malheureusement, nous ne sommes pas parvenus à réaliser le second asservissement. Nous nous contenterons donc de vous présenter notre travail pour l'asservissement en courant.
 ### Asservissement en courant
+Afin de réaliser cet asservissement, nous avons créé un correcteur PI dans un fichier de code à part. Nous initialisons notre correcteur et nous récupérons la valeur du courant mesurée avec l'ADC, ainsi que la valeur de courant voulue par l'utilisateur. C'est l'erreur entre ces deux valeurs qui va permettre de mettre en place les effet proportionnel et intégral de notre correcteur. Pour ces effet, nous choisissons respectivement un gain Kp et un gain Ki, que nous déterminons à tâtons et en plusieurs essais avec notre machine.
+Notre correcteur PI est utilisé avec le même timer que celui des PWM (timer 1) : on génère une interruption à l'aide de celui-ci durant laquelle on mesure le courant et on applique notre correction avec une consigne modifiée en PWM.
 
+Cependant, il s'avère qu'il y a un décalage entre le courant que nous mesurons directement avec une sonde de courant et la valeur désirée par l'utilisateur : le moteur est bien asservi, mais pas idéalement. Nous avons cherché à expliquer ce phénomène et avons remarqué que notre mesure du courant avec l'ADC n'était pas totalement exacte. Cela peut s'expliquer par un décalage entre le courant exact et théorique que nous n'avons pas pris en compte lors de nos calculs, ou encore un problème matériel qui impacterait la mesure.
 
 ## Conclusion
-Nous sommes parvenus à réaliser l'ensemble des consignes de ce TP, exceptée la dernière pour l'asservissement en vitesse
+Nous sommes parvenus à réaliser l'ensemble des consignes de ce TP, exceptée la dernière pour l'asservissement en vitesse. 
+Notre asservissement en courant est réussi mais notre courant a des valeurs en décalage avec celles désirées. Nous avons fourni des pistes d'explications de ce phénomène et pensons qu'il conviendrait de les explorer en détail avec plus de temps afin de régler le problème.
