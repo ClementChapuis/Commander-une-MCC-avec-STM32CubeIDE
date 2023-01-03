@@ -46,11 +46,22 @@
 // DEL = delete
 #define ASCII_DEL 0x7F
 #define ARR_VAL 1024
-#define ALPHA 600
+#define ALPHA_MAX 100
 
 #define ADC_BUFFER_SIZE 64
 
 #define VAL_MAX 65535
+
+#define PI_KP  0.02
+#define PI_KI  0.000001
+
+#define PI_LIM_MIN 	0.0
+#define PI_LIM_MAX	0.9
+
+#define PI_LIM_MIN_INT 0.0
+#define PI_LIM_MAX_INT  0.9
+
+#define SAMPLE_TIME_S 0.000064
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -83,7 +94,7 @@ uint8_t uartTxBuffer[UART_TX_BUFFER_SIZE];
 uint8_t powerOn[]="Allumage du moteur\r\n";
 uint8_t powerOff[]="Extinction du moteur\r\n";
 
-uint16_t adcBuffer[ADC_BUFFER_SIZE];
+uint32_t adcBuffer[ADC_BUFFER_SIZE];
 
 //SHELL_____________________________________________________________________
 	char	 	cmdBuffer[CMD_BUFFER_SIZE];
@@ -95,11 +106,18 @@ uint16_t adcBuffer[ADC_BUFFER_SIZE];
 	int 		abs_speed = 50;
 
 int adcDMAFlag = 0;
-int it_tim3=0;
+int it_tim3 = 0;
+int it_tim1 = 0;
 
 int enc = 0;
 int speed = 0;
 int inc = 0;
+float targetcur;
+
+char buffer[256];
+
+PIController pi = {PI_KP, PI_KI, PI_LIM_MIN, PI_LIM_MAX, PI_LIM_MIN_INT, PI_LIM_MAX_INT, SAMPLE_TIME_S};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -118,7 +136,11 @@ static void MX_TIM4_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// Nouvelle ligne, instruction à traiter
+/**
+  * @brief  	This function makes the initialization for the PI controller.
+  * @param[in]	PIController	The structure for all the PI parameters
+  * @retval 	None
+*/
 void newcom(void)
 {
 	HAL_UART_Transmit(&huart2, newline, sizeof(newline), HAL_MAX_DELAY);
@@ -135,32 +157,49 @@ void newcom(void)
 	newCmdReady = 1;
 }
 
-// Suppression du dernier caractère
+/**
+  * @brief  	This function allows us the delete letters in the shell
+  * @param[in]	None
+  * @retval 	None
+*/
 void delete(void)
 {
 	cmdBuffer[idx_cmd--] = '\0';
 	HAL_UART_Transmit(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE, HAL_MAX_DELAY);
 }
 
-// Nouveau caractère
-
+/**
+  * @brief  	This function allows us to write a new letter in the shell.
+  * @param[in]	None
+  * @retval 	None
+*/
 void new_carac(void)
 {
 	cmdBuffer[idx_cmd++] = uartRxBuffer[0];
 	HAL_UART_Transmit(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE, HAL_MAX_DELAY);//Echo
 }
 
+/**
+  * @brief  	This function writes a message in the shell in the case the command is not found.
+  * @param[in]	None
+  * @retval 	None
+*/
 void get(void)
 {
 	HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
 }
 
+/**
+  * @brief  	This function switch on/off the led if the user writes PA5.
+  * @param[in]	None
+  * @retval 	None
+*/
 void set(void)
 {
 	if(strcmp(argv[1],"PA5")==0)
 	{
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, atoi(argv[2]));
-		sprintf(uartTxBuffer,"Switch on/off led : %d\r\n",atoi(argv[2]));
+		sprintf((char *)uartTxBuffer,"Switch on/off led : %d\r\n",atoi(argv[2]));
 		HAL_UART_Transmit(&huart2, uartTxBuffer, 32, HAL_MAX_DELAY);
 	}
 	else{
@@ -168,52 +207,66 @@ void set(void)
 	}
 }
 
+/**
+  * @brief  	This function displays all the usable functions for the user.
+  * @param[in]	None
+  * @retval 	None
+*/
 void help(void)
 {
-	sprintf(uartTxBuffer, "HELP : Fonctions available :\r\n");
+	sprintf((char *)uartTxBuffer, "HELP : Fonctions available :\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- pinout : affiche toutes les broches connectées (à faire)\r\n");
+	sprintf((char *)uartTxBuffer, "- pinout : affiche toutes les broches connectées (à faire)\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- start : allume l'étage de puissance du moteur\r\n");
+	sprintf((char *)uartTxBuffer, "- start : allume l'étage de puissance du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- speed : règle la vitesse du moteur\r\n");
+	sprintf((char *)uartTxBuffer, "- speed : règle la vitesse du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- stop : éteind l'étage de puissance du moteur\r\n");
+	sprintf((char *)uartTxBuffer, "- stop : éteind l'étage de puissance du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- adc : retourne la valeur de l'ADC\r\n");
+	sprintf((char *)uartTxBuffer, "- current : retourne la valeur du courant\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 }
 
-void pinout()
+/**
+  * @brief  	This function shows all the connections for the pinouts.
+  * @param[in]	None
+  * @retval 	None
+*/
+void pinout(void)
 {
-	sprintf(uartTxBuffer, "Les broches connectées sont les suivantes :\r\n");
+	sprintf((char *)uartTxBuffer, "Les broches connectées sont les suivantes :\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- TIM1_CH2N : PA12 / CN10-12 -> PIN12\r\n");
+	sprintf((char *)uartTxBuffer, "- TIM1_CH2N : PA12 / CN10-12 -> PIN12\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- TIM1_CH1N : PA11 / CN10-14 -> PIN13\r\n");
+	sprintf((char *)uartTxBuffer, "- TIM1_CH1N : PA11 / CN10-14 -> PIN13\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- TIM1_CH2 : PA9 / CN9-21 -> PIN30\r\n");
+	sprintf((char *)uartTxBuffer, "- TIM1_CH2 : PA9 / CN9-21 -> PIN30\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- TIM1_CH1 : PA8 / CN9-23 -> PIN31\r\n");
+	sprintf((char *)uartTxBuffer, "- TIM1_CH1 : PA8 / CN9-23 -> PIN31\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- ISO_Reset : PC3 / CN7-37 -> PIN33\r\n");
+	sprintf((char *)uartTxBuffer, "- ISO_Reset : PC3 / CN7-37 -> PIN33\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- ADC1_IN1 : PA0 / CN8-1 -> PIN16\r\n");
+	sprintf((char *)uartTxBuffer, "- ADC1_IN1 : PA0 / CN8-1 -> PIN16\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- TIM4_CH1 : PB8 / CN5-10 -> PINA\r\n");
+	sprintf((char *)uartTxBuffer, "- TIM4_CH1 : PB8 / CN5-10 -> PINA\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf(uartTxBuffer, "- TIM4_CH2 : PB7 / CN7-21 -> PINB\r\n");
+	sprintf((char *)uartTxBuffer, "- TIM4_CH2 : PB7 / CN7-21 -> PINB\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-
 }
 
+/**
+  * @brief  	This function makes the initialization for the chopper, the PWM for the motor and the initialization for the encoder.
+  * @param[in]	None
+  * @retval 	None
+*/
 void start(void)
 {
 	//séquence d'initialisation
 	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, SET);
 	HAL_Delay(1);
 	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
-	sprintf(uartTxBuffer, "Séquence d'initialisation \r\n");
+	sprintf((char *)uartTxBuffer, "Séquence d'initialisation \r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 	//commande PWM
 	HAL_TIM_Base_Start(&htim1);
@@ -221,17 +274,22 @@ void start(void)
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-	sprintf(uartTxBuffer, "Initialisation de la commande PWM \r\n");
+	sprintf((char *)uartTxBuffer, "Initialisation de la commande PWM \r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 
 	//encodeur initialisé avec 2 channels
 	HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
-	sprintf(uartTxBuffer, "Initialisation de l'encodeur \r\n");
+	sprintf((char *)uartTxBuffer, "Initialisation de l'encodeur \r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 
 	HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOn), HAL_MAX_DELAY);
 }
 
+/**
+  * @brief  	This function makes the initialization for the PI controller.
+  * @param[in]	None
+  * @retval 	None
+*/
 void stop(void)
 {
 	HAL_UART_Transmit(&huart2, powerOff, sizeof(powerOff), HAL_MAX_DELAY);
@@ -242,6 +300,11 @@ void stop(void)
 	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
 }
 
+/**
+  * @brief  	This function allows the user to set the motor speed.
+  * @param[in]	vit	The speed wanted by the user (0-49 in one direction, 51-100 in the other, 50 the motor doesn't turn)
+  * @retval 	None
+*/
 void set_speed(char* vit)
 {
 	int speed = (ARR_VAL*atoi(vit))/100;
@@ -249,40 +312,71 @@ void set_speed(char* vit)
 	TIM1->CCR2=speed;
 }
 
-void adc()
+/**
+  * @brief  	This function allows the user to set the current value for the motor and its enslavement.
+  * @param[in]	set_cur	The value of current the user wants for the motor enslavement
+  * @retval 	None
+*/
+void set_current(char* set_cur)
 {
-	sprintf(uartTxBuffer, "{ADC_0 Value : %1.5f}\r\n", ((((float)adcBuffer[0])*3.3/4096)-2.53)*12); //ici des volt -> voir page 18 sur la doc de l'alim
-	HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
-	adcDMAFlag = 0;
+	targetcur = (float)atof(set_cur);
 }
 
-void read_enc()
+float get_current()
+{
+	return ((((float)adcBuffer[0])*3.3/4096)-2.53)*12;
+}
+
+
+
+/**
+  * @brief  	This function read the encoder value.
+  * @param[in]	None
+  * @retval 	None
+*/
+void read_enc(void)
 {
 	enc = TIM4->CNT;
 }
 
-void read_speed()
+/**
+  * @brief  	This function read the value of the speed (measured by the encoder).
+  * @param[in]	None
+  * @retval 	None
+*/
+void read_speed(void)
 {
 	speed = (TIM4->CNT) - (VAL_MAX/2);
 	TIM4->CNT = VAL_MAX/2;
 }
 
+
+/**
+  * @brief  	The function which generate the interruptions.
+  * @param[in]	htim	timer adress
+  * @retval 	None
+*/
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	/*if(htim==&htim3)
+	if(htim==&htim3)
 	{
 		sprintf(uartTxBuffer, "{ADC_0 Value : %1.5f}\r\n", ((((float)adcBuffer[0])*3.3/4096)-2.53)*12);
 		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
 		adcDMAFlag = 0;
-	}*/
-	if(htim==&htim3)
+	}
+	/*if(htim==&htim3)
 	{
 		read_enc();
-		sprintf(uartTxBuffer, "ENC Value : %d\r\n", enc);
+		sprintf((char *)uartTxBuffer, "ENC Value : %d\r\n", enc);
 		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
+
 		read_speed();
-		sprintf(uartTxBuffer, "Speed Value : %f\r\n", (float)speed*0.0302);
+		sprintf((char *)uartTxBuffer, "Speed Value : %f\r\n", (float)speed*0.0302);
 		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
+	}*/
+	if(htim==&htim1)
+	{
+		it_tim1 = 1;
 	}
 }
 
@@ -353,10 +447,12 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  memset(argv,NULL,MAX_ARGS*sizeof(char*));
-  memset(cmdBuffer,NULL,CMD_BUFFER_SIZE*sizeof(char));
-  memset(uartRxBuffer,NULL,UART_RX_BUFFER_SIZE*sizeof(char));
-  memset(uartTxBuffer,NULL,UART_TX_BUFFER_SIZE*sizeof(char));
+  PIController_Init(&pi);
+
+  memset(argv,0,MAX_ARGS*sizeof(char*));
+  memset(cmdBuffer,0,CMD_BUFFER_SIZE*sizeof(char));
+  memset(uartRxBuffer,0,UART_RX_BUFFER_SIZE*sizeof(char));
+  memset(uartTxBuffer,0,UART_TX_BUFFER_SIZE*sizeof(char));
 
   HAL_UART_Receive_IT(&huart2, uartRxBuffer, UART_RX_BUFFER_SIZE);
   HAL_Delay(10);
@@ -365,7 +461,7 @@ int main(void)
 
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, adcBuffer, 1);
-  HAL_TIM_Base_Start(&htim1);
+  HAL_TIM_Base_Start_IT(&htim1);
   HAL_TIM_Base_Start_IT(&htim3);
   HAL_TIM_Base_Start_IT(&htim4);
   /* USER CODE END 2 */
@@ -420,18 +516,24 @@ int main(void)
   	  		  {
   	  		  	  stop();
   	  		  }
-  	  		  else if(strcmp(argv[0],"adc")==0)
+  	  		  else if(strcmp(argv[0],"current")==0)
   	  		  {
-  	  		  	  adc();
+  	  		  	  set_current(argv[1]);
   	  		  }
   	  		  else{
   	  			  HAL_UART_Transmit(&huart2, cmdNotFound, sizeof(cmdNotFound), HAL_MAX_DELAY);
   	  		  }
   	  			  HAL_UART_Transmit(&huart2, prompt, sizeof(prompt), HAL_MAX_DELAY);
   	  			  newCmdReady = 0;
-  	  			  memset(cmdBuffer,NULL,CMD_BUFFER_SIZE*sizeof(char));
+  	  			  memset(cmdBuffer,0,CMD_BUFFER_SIZE*sizeof(char));
   	  	  }
 
+  	  	  if(it_tim1)
+  	  	 	  {
+				  PIController_Update(&pi, targetcur, get_current());
+				  set_speed(itoa(pi.out*100, buffer, 10));
+				  it_tim1 = 0;
+  	  	 	  }
 
 
   	  	  /*if(adcDMAFlag)
