@@ -4,7 +4,7 @@
   * @file           : main.c
   * @brief          : Main program body
   * @author			: Clément Chapuis & Aurélien Sutra
-  * @date			: Date du dernier commit&push : 02/12/2022
+  * @date			: Date du dernier commit&push : 03/01/2023
   ******************************************************************************
   * @attention
   *
@@ -23,9 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -35,33 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UART_TX_BUFFER_SIZE 64
-#define UART_RX_BUFFER_SIZE 1
-#define CMD_BUFFER_SIZE 64
-#define MAX_ARGS 9
-// LF = line feed, saut de ligne
-#define ASCII_LF 0x0A
-// CR = carriage return, retour chariot
-#define ASCII_CR 0x0D
-// DEL = delete
-#define ASCII_DEL 0x7F
-#define ARR_VAL 1024
-#define ALPHA_MAX 100
 
-#define ADC_BUFFER_SIZE 64
-
-#define VAL_MAX 65535
-
-#define PI_KP  0.02
-#define PI_KI  0.000001
-
-#define PI_LIM_MIN 	0.0
-#define PI_LIM_MAX	0.9
-
-#define PI_LIM_MIN_INT 0.0
-#define PI_LIM_MAX_INT  0.9
-
-#define SAMPLE_TIME_S 0.000064
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -113,8 +85,7 @@ int enc = 0;
 int speed = 0;
 int inc = 0;
 float targetcur;
-
-char buffer[256];
+char pi_buffer[256];
 
 PIController pi = {PI_KP, PI_KI, PI_LIM_MIN, PI_LIM_MAX, PI_LIM_MIN_INT, PI_LIM_MAX_INT, SAMPLE_TIME_S};
 
@@ -216,7 +187,7 @@ void help(void)
 {
 	sprintf((char *)uartTxBuffer, "HELP : Fonctions available :\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf((char *)uartTxBuffer, "- pinout : affiche toutes les broches connectées (à faire)\r\n");
+	sprintf((char *)uartTxBuffer, "- pinout : affiche toutes les broches connectées\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 	sprintf((char *)uartTxBuffer, "- start : allume l'étage de puissance du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
@@ -224,7 +195,7 @@ void help(void)
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 	sprintf((char *)uartTxBuffer, "- stop : éteind l'étage de puissance du moteur\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
-	sprintf((char *)uartTxBuffer, "- current : retourne la valeur du courant\r\n");
+	sprintf((char *)uartTxBuffer, "- current : valeur du courant en ampère pour l'asser\r\n");
 	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 }
 
@@ -266,21 +237,15 @@ void start(void)
 	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, SET);
 	HAL_Delay(1);
 	HAL_GPIO_WritePin(ISO_RESET_GPIO_Port, ISO_RESET_Pin, RESET);
-	sprintf((char *)uartTxBuffer, "Séquence d'initialisation \r\n");
-	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 	//commande PWM
 	HAL_TIM_Base_Start(&htim1);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-	sprintf((char *)uartTxBuffer, "Initialisation de la commande PWM \r\n");
-	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 
 	//encodeur initialisé avec 2 channels
 	HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
-	sprintf((char *)uartTxBuffer, "Initialisation de l'encodeur \r\n");
-	HAL_UART_Transmit(&huart2, uartTxBuffer, sizeof(uartTxBuffer), HAL_MAX_DELAY);
 
 	HAL_UART_Transmit(&huart2, powerOn, sizeof(powerOn), HAL_MAX_DELAY);
 }
@@ -313,23 +278,6 @@ void set_speed(char* vit)
 }
 
 /**
-  * @brief  	This function allows the user to set the current value for the motor and its enslavement.
-  * @param[in]	set_cur	The value of current the user wants for the motor enslavement
-  * @retval 	None
-*/
-void set_current(char* set_cur)
-{
-	targetcur = (float)atof(set_cur);
-}
-
-float get_current()
-{
-	return ((((float)adcBuffer[0])*3.3/4096)-2.53)*12;
-}
-
-
-
-/**
   * @brief  	This function read the encoder value.
   * @param[in]	None
   * @retval 	None
@@ -350,6 +298,45 @@ void read_speed(void)
 	TIM4->CNT = VAL_MAX/2;
 }
 
+/**
+  * @brief  	This function makes the conversion for the current value for the motor and its enslavement.
+  * @param[in]	set_cur	The value of current the user wants for the motor enslavement
+  * @retval 	None
+*/
+void set_current(char* set_cur)
+{
+	targetcur = (float)atof(set_cur);
+}
+
+/**
+  * @brief  	This function make the measure of the current for the current enslavement.
+  * @param[in]	None
+  * @retval 	None
+*/
+float get_current()
+{
+	return ((((float)adcBuffer[0])*3.3/4096)-2.53)*12;
+}
+
+/**
+  * @brief  	This function shows all the data needed from the motor for this project: current value, encoder value and speed value.
+  * @param[in]	None
+  * @retval 	None
+*/
+void data(void)
+{
+	sprintf((char *)uartTxBuffer, "{ADC_0 Value : %1.5f}\r\n", ((((float)adcBuffer[0])*3.3/4096)-2.53)*12);
+	HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
+	adcDMAFlag = 0;
+
+	read_enc();
+	sprintf((char *)uartTxBuffer, "ENC Value : %d\r\n", enc);
+	HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
+
+	read_speed();
+	sprintf((char *)uartTxBuffer, "Speed Value : %f\r\n", (float)speed*0.0302);
+	HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
+}
 
 /**
   * @brief  	The function which generate the interruptions.
@@ -358,14 +345,12 @@ void read_speed(void)
 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	if(htim==&htim3)
-	{
-		sprintf(uartTxBuffer, "{ADC_0 Value : %1.5f}\r\n", ((((float)adcBuffer[0])*3.3/4096)-2.53)*12);
-		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
-		adcDMAFlag = 0;
-	}
 	/*if(htim==&htim3)
 	{
+		sprintf((char *)uartTxBuffer, "{ADC_0 Value : %1.5f}\r\n", ((((float)adcBuffer[0])*3.3/4096)-2.53)*12);
+		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
+		adcDMAFlag = 0;
+
 		read_enc();
 		sprintf((char *)uartTxBuffer, "ENC Value : %d\r\n", enc);
 		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
@@ -374,40 +359,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		sprintf((char *)uartTxBuffer, "Speed Value : %f\r\n", (float)speed*0.0302);
 		HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
 	}*/
+
 	if(htim==&htim1)
 	{
 		it_tim1 = 1;
 	}
 }
-
-/*
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-   Prevent unused argument(s) compilation warning
-  UNUSED(GPIO_Pin);
-  int compt = 1;
-  char speed[100];
-  if (compt)
-  {
-	  set_speed(itoa(abs_speed,speed,10));
-	  abs_speed++;
-	  if (abs_speed == 100)
-	  {
-		  compt = 0;
-	  }
-  }
-  else {
-	  abs_speed--;
-	  if(abs_speed == 0)
-	  {
-		  compt = 1;
-	  }
-  }
-
-   NOTE: This function should not be modified, when the callback is needed,
-           the HAL_GPIO_EXTI_Callback could be implemented in the user file
-
-}*/
 
 
 /* USER CODE END 0 */
@@ -531,20 +488,9 @@ int main(void)
   	  	  if(it_tim1)
   	  	 	  {
 				  PIController_Update(&pi, targetcur, get_current());
-				  set_speed(itoa(pi.out*100, buffer, 10));
+				  set_speed(itoa(pi.out*100, pi_buffer, 10));
 				  it_tim1 = 0;
   	  	 	  }
-
-
-  	  	  /*if(adcDMAFlag)
-  	  	  {
-  	  		  dummy = (dummy+1)%10000;
-  	  		  if(dummy == 0){
-  	  			  sprintf(uartTxBuffer, "{ADC Value : %4d}\r\n", (adcBuffer[0])); //ici des volt -> voir page 18 sur la doc de l'alim
-  	  			  HAL_UART_Transmit(&huart2, uartTxBuffer, strlen((char*) uartTxBuffer)*sizeof(char), HAL_MAX_DELAY);
-  	  		  }
-  	  		adcDMAFlag = 0;
-  	  	  }*/
 
     /* USER CODE END WHILE */
 
