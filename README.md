@@ -21,7 +21,7 @@ Ces fonctions sont listées comme suit :
 ## Génération des PWM 
 Nous avons besoin d'une fréquence de PWM <= 16 kHz avec une résolution de 10 bits. Pour cela, nous fixons l’ARR à 1023 et PSC à 9. Nous avons réglé les temps morts à 200, pour réaliser une rupture de 2 entre les canaux complémentaires. Nous utilisons TIM1_CH1 et TIM1_CH2 pour réaliser la génération PWM en canaux complémentaires.
 
-![2](https://user-images.githubusercontent.com/83455678/210656542-b797ad15-d4c5-42d8-943d-7241e7cbf422.jpg)
+![2](https://user-images.githubusercontent.com/83455678/210656677-94a6072e-f4d9-419e-8b53-42f2810d59ba.jpg)
 
 ## Séquence d'initialisation et commande de vitesse
 ### Séquence d'initialisation
