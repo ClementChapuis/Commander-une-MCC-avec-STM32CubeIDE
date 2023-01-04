@@ -6,8 +6,6 @@ A partir d'un hacheur complet et d'une carte Nucleo-STM32G474RE, nous souhaitons
 - Faire l'acquisition des différents capteurs
 - Réaliser l'asservissement en temps réel
 
-<img width="253" alt="Capture d’écran 2023-01-04 224641" src="https://user-images.githubusercontent.com/83455678/210656492-48200264-6c79-4155-9875-4c621a067290.png">
-
 ## Réalisation du shell
 Comme nous l’avons déjà fait pour d’autres projets, nous avons créé un shell disposant de différentes fonctions d’information et de contrôle pour le moteur.
 Ces fonctions sont listées comme suit : 
@@ -17,6 +15,8 @@ Ces fonctions sont listées comme suit :
 - une fonction "Stop" pour mettre le moteur hors tension
 - une fonction "Speed" permettant de contrôler le cycle de fonctionnement du PWM entraînant le moteur
 - une fonction "Current" permettant de contrôler la valeur du courant voulu pour l'asservissement en courant de notre MCC
+
+<img width="253" alt="Capture d’écran 2023-01-04 224641" src="https://user-images.githubusercontent.com/83455678/210656492-48200264-6c79-4155-9875-4c621a067290.png">
 
 ## Génération des PWM 
 Nous avons besoin d'une fréquence de PWM <= 16 kHz avec une résolution de 10 bits. Pour cela, nous fixons l’ARR à 1023 et PSC à 9. Nous avons réglé les temps morts à 200, pour réaliser une rupture de 2 entre les canaux complémentaires. Nous utilisons TIM1_CH1 et TIM1_CH2 pour réaliser la génération PWM en canaux complémentaires.
